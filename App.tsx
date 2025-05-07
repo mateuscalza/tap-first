@@ -1,12 +1,13 @@
 import { StatusBar } from 'expo-status-bar'
-import { useState, useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
+  Pressable,
   SafeAreaView,
   Platform,
+  useWindowDimensions,
 } from 'react-native'
 import Animated, {
   useSharedValue,
@@ -21,20 +22,20 @@ const PURPLE_COLOR = '#9370DB' // Lilás
 const GREEN_COLOR = '#2E8B57' // Verde
 
 export default function App() {
+  /** Estado & refs */
   const [buttonsDisabled, setButtonsDisabled] = useState(false)
   const [colorName, setColorName] = useState('')
   const soundRef = useRef<Audio.Sound | null>(null)
 
-  // Animações para o overlay
+  /** Altura da janela (sem status bar / notch) */
+  const { height: windowHeight } = useWindowDimensions()
+
+  /** Animations (Reanimated) */
   const overlayOpacity = useSharedValue(0)
   const overlayScale = useSharedValue(1)
   const overlayColor = useSharedValue('#000')
 
-  // Rotação dos textos
-  const topTextRotation = 180
-  const bottomTextRotation = 0
-
-  // Fullscreen no Android
+  /** Full‑screen Android nav‑bar tweaks */
   useEffect(() => {
     if (Platform.OS === 'android') {
       NavigationBar.setVisibilityAsync('hidden')
@@ -44,31 +45,32 @@ export default function App() {
     }
   }, [])
 
-  // Carregar som
+  /** Load beep */
   useEffect(() => {
-    let isMounted = true
+    let mounted = true
     ;(async () => {
       const { sound } = await Audio.Sound.createAsync(
-        require('./assets/beep.mp3'), // Coloque um beep.mp3 em assets
+        require('./assets/beep.mp3'),
         { shouldPlay: false }
       )
-      if (isMounted) soundRef.current = sound
+      if (mounted) soundRef.current = sound
     })()
     return () => {
-      isMounted = false
-      if (soundRef.current) soundRef.current.unloadAsync()
+      mounted = false
+      soundRef.current?.unloadAsync()
     }
   }, [])
 
+  /** Helpers */
   const playSound = async () => {
     try {
-      if (soundRef.current) {
-        await soundRef.current.replayAsync()
-      }
-    } catch (e) {}
+      await soundRef.current?.replayAsync()
+    } catch {}
   }
 
-  const showOverlay = async (color: string, name: string) => {
+  const showOverlay = (color: string, name: string) => {
+    if (buttonsDisabled) return // debounce
+
     setButtonsDisabled(true)
     setColorName(name)
     overlayColor.value = color
@@ -77,9 +79,8 @@ export default function App() {
     overlayOpacity.value = withTiming(1, { duration: 180 })
     overlayScale.value = withTiming(1, { duration: 180 })
     playSound()
-    setTimeout(() => {
-      hideOverlay()
-    }, 2000)
+
+    setTimeout(hideOverlay, 2000)
   }
 
   const hideOverlay = () => {
@@ -91,60 +92,53 @@ export default function App() {
     }, 200)
   }
 
-  const overlayStyle = useAnimatedStyle(() => {
-    return {
-      opacity: overlayOpacity.value,
-      backgroundColor: overlayColor.value,
-      transform: [{ scale: overlayScale.value }],
-    }
-  })
+  const overlayStyle = useAnimatedStyle(() => ({
+    opacity: overlayOpacity.value,
+    backgroundColor: overlayColor.value,
+    transform: [{ scale: overlayScale.value }],
+  }))
 
+  /** Decide cor pelo pageY absoluto vs windowHeight */
+  const handlePressIn = (pageY: number) => {
+    // pageY < metade da janela -> Lilás; senão Verde
+    if (pageY < windowHeight / 2) {
+      showOverlay(PURPLE_COLOR, 'Lilás')
+    } else {
+      showOverlay(GREEN_COLOR, 'Verde')
+    }
+  }
+
+  /** Render */
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style='light' hidden />
 
-      <View style={styles.buttonsContainer}>
+      {/* Um único Pressable ocupando a área útil */}
+      <Pressable
+        style={styles.pressableArea}
+        onPressIn={(e) => handlePressIn(e.nativeEvent.pageY)}
+      >
+        {/* Half Top */}
         <View style={[styles.halfScreen, { backgroundColor: PURPLE_COLOR }]}>
-          <TouchableOpacity
-            style={styles.touchButton}
-            onPressIn={() => showOverlay(PURPLE_COLOR, 'Lilás')}
-            disabled={buttonsDisabled}
-          >
-            <Text style={[styles.buttonText, styles.topText]}>Lilás</Text>
-          </TouchableOpacity>
+          <Text style={[styles.buttonText, styles.topText]}>Lilás</Text>
         </View>
-
+        {/* Half Bottom */}
         <View style={[styles.halfScreen, { backgroundColor: GREEN_COLOR }]}>
-          <TouchableOpacity
-            style={styles.touchButton}
-            onPressIn={() => showOverlay(GREEN_COLOR, 'Verde')}
-            disabled={buttonsDisabled}
-          >
-            <Text style={[styles.buttonText, styles.bottomText]}>Verde</Text>
-          </TouchableOpacity>
+          <Text style={[styles.buttonText, styles.bottomText]}>Verde</Text>
         </View>
-      </View>
+      </Pressable>
 
+      {/* Overlay */}
       <Animated.View
         pointerEvents={overlayOpacity.value > 0.1 ? 'auto' : 'none'}
         style={[styles.overlay, overlayStyle]}
       >
         <Text
-          style={[
-            styles.overlayText,
-            { transform: [{ rotate: `${topTextRotation}deg` }] },
-          ]}
+          style={[styles.overlayText, { transform: [{ rotate: '180deg' }] }]}
         >
           {colorName}
         </Text>
-        <Text
-          style={[
-            styles.overlayText,
-            { transform: [{ rotate: `${bottomTextRotation}deg` }] },
-          ]}
-        >
-          {colorName}
-        </Text>
+        <Text style={styles.overlayText}>{colorName}</Text>
       </Animated.View>
     </SafeAreaView>
   )
@@ -155,21 +149,14 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#000',
   },
-  buttonsContainer: {
+  pressableArea: {
     flex: 1,
-    flexDirection: 'column',
   },
   halfScreen: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     width: '100%',
-  },
-  touchButton: {
-    width: '100%',
-    height: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   buttonText: {
     fontSize: 24,
