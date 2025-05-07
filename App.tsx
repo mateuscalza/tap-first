@@ -4,10 +4,10 @@ import {
   View,
   Text,
   StyleSheet,
-  Pressable,
   SafeAreaView,
   Platform,
   useWindowDimensions,
+  GestureResponderEvent,
 } from 'react-native'
 import Animated, {
   useSharedValue,
@@ -21,13 +21,15 @@ import { Audio } from 'expo-av'
 const PURPLE_COLOR = '#9370DB' // Lilás
 const GREEN_COLOR = '#2E8B57' // Verde
 
+// Janela (ms) dentro da qual consideramos toques "simultâneos"
+const DECISION_WINDOW = 40
+
 export default function App() {
   /** Estado & refs */
-  const [buttonsDisabled, setButtonsDisabled] = useState(false)
   const [colorName, setColorName] = useState('')
   const soundRef = useRef<Audio.Sound | null>(null)
 
-  /** Altura da janela (sem status bar / notch) */
+  /** Dimensões */
   const { height: windowHeight } = useWindowDimensions()
 
   /** Animations (Reanimated) */
@@ -35,7 +37,7 @@ export default function App() {
   const overlayScale = useSharedValue(1)
   const overlayColor = useSharedValue('#000')
 
-  /** Full‑screen Android nav‑bar tweaks */
+  /** Navegação Android */
   useEffect(() => {
     if (Platform.OS === 'android') {
       NavigationBar.setVisibilityAsync('hidden')
@@ -45,7 +47,7 @@ export default function App() {
     }
   }, [])
 
-  /** Load beep */
+  /** Som */
   useEffect(() => {
     let mounted = true
     ;(async () => {
@@ -61,35 +63,57 @@ export default function App() {
     }
   }, [])
 
+  /** Multi‑touch fairness refs */
+  const firstTouchInfo = useRef<{ time: number; y: number } | null>(null)
+  const decisionMade = useRef(false)
+  const decisionTimer = useRef<NodeJS.Timeout | null>(null)
+
   /** Helpers */
-  const playSound = async () => {
-    try {
-      await soundRef.current?.replayAsync()
-    } catch {}
-  }
+  const decideWinner = () => {
+    if (decisionMade.current || !firstTouchInfo.current) return
+    decisionMade.current = true
 
-  const showOverlay = (color: string, name: string) => {
-    if (buttonsDisabled) return // debounce
+    const { y } = firstTouchInfo.current
+    const winnerColor = y < windowHeight / 2 ? PURPLE_COLOR : GREEN_COLOR
+    const winnerName = y < windowHeight / 2 ? 'Lilás' : 'Verde'
 
-    setButtonsDisabled(true)
-    setColorName(name)
-    overlayColor.value = color
+    setColorName(winnerName)
+    overlayColor.value = winnerColor
     overlayScale.value = 0.8
     overlayOpacity.value = 0
     overlayOpacity.value = withTiming(1, { duration: 180 })
     overlayScale.value = withTiming(1, { duration: 180 })
-    playSound()
+    soundRef.current?.replayAsync()
 
-    setTimeout(hideOverlay, 2000)
+    // esconder após 2 s
+    setTimeout(() => {
+      overlayOpacity.value = withTiming(0, { duration: 180 })
+      overlayScale.value = withTiming(0.8, { duration: 180 })
+      setTimeout(() => {
+        setColorName('')
+      }, 200)
+      // reset controles
+      firstTouchInfo.current = null
+      decisionMade.current = false
+    }, 2000)
   }
 
-  const hideOverlay = () => {
-    overlayOpacity.value = withTiming(0, { duration: 180 })
-    overlayScale.value = withTiming(0.8, { duration: 180 })
-    setTimeout(() => {
-      setButtonsDisabled(false)
-      setColorName('')
-    }, 200)
+  /** onTouchStart captura TODOS os dedos */
+  const handleTouchStart = (e: GestureResponderEvent) => {
+    const { pageY, timestamp } = e.nativeEvent as any // timestamp android only; iOS approximated
+
+    // Se ainda não registramos o primeiro toque, ou este veio antes do atual registrado
+    if (!firstTouchInfo.current || timestamp < firstTouchInfo.current.time) {
+      firstTouchInfo.current = { time: timestamp, y: pageY }
+    }
+
+    // arma o timer apenas uma vez (primeiro toque)
+    if (!decisionTimer.current) {
+      decisionTimer.current = setTimeout(() => {
+        decideWinner()
+        decisionTimer.current = null
+      }, DECISION_WINDOW)
+    }
   }
 
   const overlayStyle = useAnimatedStyle(() => ({
@@ -98,37 +122,27 @@ export default function App() {
     transform: [{ scale: overlayScale.value }],
   }))
 
-  /** Decide cor pelo pageY absoluto vs windowHeight */
-  const handlePressIn = (pageY: number) => {
-    // pageY < metade da janela -> Lilás; senão Verde
-    if (pageY < windowHeight / 2) {
-      showOverlay(PURPLE_COLOR, 'Lilás')
-    } else {
-      showOverlay(GREEN_COLOR, 'Verde')
-    }
-  }
-
   /** Render */
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style='light' hidden />
 
-      {/* Um único Pressable ocupando a área útil */}
-      <Pressable
-        style={styles.pressableArea}
-        onPressIn={(e) => handlePressIn(e.nativeEvent.pageY)}
+      <View
+        style={styles.touchZone}
+        onStartShouldSetResponder={() => true}
+        onResponderGrant={handleTouchStart}
       >
-        {/* Half Top */}
+        {/* Metade superior */}
         <View style={[styles.halfScreen, { backgroundColor: PURPLE_COLOR }]}>
           <Text style={[styles.buttonText, styles.topText]}>Lilás</Text>
         </View>
-        {/* Half Bottom */}
+        {/* Metade inferior */}
         <View style={[styles.halfScreen, { backgroundColor: GREEN_COLOR }]}>
           <Text style={[styles.buttonText, styles.bottomText]}>Verde</Text>
         </View>
-      </Pressable>
+      </View>
 
-      {/* Overlay */}
+      {/* Overlay de resultado */}
       <Animated.View
         pointerEvents={overlayOpacity.value > 0.1 ? 'auto' : 'none'}
         style={[styles.overlay, overlayStyle]}
@@ -149,14 +163,13 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#000',
   },
-  pressableArea: {
+  touchZone: {
     flex: 1,
   },
   halfScreen: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    width: '100%',
   },
   buttonText: {
     fontSize: 24,
