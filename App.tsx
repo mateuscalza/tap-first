@@ -1,55 +1,6 @@
 import { StatusBar } from 'expo-status-bar'
 import { useEffect, useState } from 'react'
-import { View, Text, SafeAreaView } from 'react-native'
-import styled from 'styled-components/native'
-
-const Container = styled(SafeAreaView)`
-  flex: 1;
-  background-color: #fff;
-`
-
-const ButtonsContainer = styled(View)`
-  flex: 1;
-  flex-direction: row;
-`
-
-const Button = styled.TouchableOpacity`
-  flex: 1;
-  justify-content: center;
-  align-items: center;
-`
-
-const LeftButton = styled(Button)`
-  background-color: #9370db; /* Lilás */
-`
-
-const RightButton = styled(Button)`
-  background-color: #2e8b57; /* Verde */
-`
-
-const ButtonText = styled.Text`
-  font-size: 24px;
-  font-weight: bold;
-  color: white;
-`
-
-const Overlay = styled(View)`
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  justify-content: center;
-  align-items: center;
-  z-index: 10;
-`
-
-const OverlayText = styled.Text`
-  font-size: 36px;
-  font-weight: bold;
-  color: white;
-  text-align: center;
-`
+import { View, Text, SafeAreaView, TouchableOpacity } from 'react-native'
 
 export default function App() {
   const [overlay, setOverlay] = useState<{
@@ -77,23 +28,62 @@ export default function App() {
   }
 
   return (
-    <Container>
-      <StatusBar style='auto' />
-
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
       {overlay ? (
-        <Overlay style={{ backgroundColor: overlay.backgroundColor }}>
-          <OverlayText>{overlay.name}</OverlayText>
-        </Overlay>
+        <View
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 10,
+            backgroundColor: overlay.backgroundColor,
+          }}
+        >
+          <Text
+            style={{
+              fontSize: 36,
+              fontWeight: 'bold',
+              color: 'white',
+              textAlign: 'center',
+            }}
+          >
+            {overlay.name}
+          </Text>
+        </View>
       ) : (
-        <ButtonsContainer>
-          <LeftButton onPress={() => handlePress('#9370DB', 'Lilás')}>
-            <ButtonText>Lilás</ButtonText>
-          </LeftButton>
-          <RightButton onPress={() => handlePress('#2E8B57', 'Verde')}>
-            <ButtonText>Verde</ButtonText>
-          </RightButton>
-        </ButtonsContainer>
+        <View style={{ flex: 1, flexDirection: 'row' }}>
+          <TouchableOpacity
+            style={{
+              flex: 1,
+              justifyContent: 'center',
+              alignItems: 'center',
+              backgroundColor: '#9370db',
+            }}
+            onPress={() => handlePress('#9370DB', 'Lilás')}
+          >
+            <Text style={{ fontSize: 24, fontWeight: 'bold', color: 'white' }}>
+              Lilás
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={{
+              flex: 1,
+              justifyContent: 'center',
+              alignItems: 'center',
+              backgroundColor: '#2e8b57',
+            }}
+            onPress={() => handlePress('#2E8B57', 'Verde')}
+          >
+            <Text style={{ fontSize: 24, fontWeight: 'bold', color: 'white' }}>
+              Verde
+            </Text>
+          </TouchableOpacity>
+        </View>
       )}
-    </Container>
+    </SafeAreaView>
   )
 }
